@@ -1,0 +1,13 @@
+[package]
+name = "wasm-blockchain"
+version = "0.0.1"
+authors = ["Nebula <nebula@kora.gg>"]
+description = "Proof-Of-Concept WebAssembly Blockchain"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/nebulatgs/wasm-blockchain"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
