@@ -1,14 +1,27 @@
 {
 	"name": "wasm-blockchain",
-	"version": "0.0.1",
-	"description": "Proof-Of-Concept WebAssembly Blockchain",
+	"private": true,
 	"scripts": {
-		"serve": "live-server static",
-		"build": "wasm-pack build --target web --out-name wasm --out-dir static/wasm"
+		"dev": "next dev",
+		"build": "next build",
+		"start": "next start",
+		"lint": "next lint"
 	},
-	"author": "Nebula <nebula@kora.gg>",
-	"license": "MIT/Apache-2.0",
+	"dependencies": {
+		"next": "12.0.2",
+		"peerjs": "^1.3.2",
+		"react": "17.0.2",
+		"react-dom": "17.0.2",
+		"wasm": "file:./wasm/static/wasm"
+	},
 	"devDependencies": {
-		"live-server": "^1.2.1"
+		"@types/node": "16.11.6",
+		"@types/react": "17.0.34",
+		"autoprefixer": "^10.4.0",
+		"eslint": "7",
+		"eslint-config-next": "12.0.2",
+		"postcss": "^8.3.11",
+		"tailwindcss": "^2.2.19",
+		"typescript": "4.4.4"
 	}
 }
