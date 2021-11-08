@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
+    <script type="module">
+        import init, { setup, submit_block_to_holder, add_block_to_holder, add_chain_to_holder, verify_chain_in_holder, get_chain_from_holder } from './wasm/wasm.js';
+        (async () => {
+            await init();
+            let holder = setup();
+            const peer = new Peer({
+                key: "peerjs",
+                host: "peerjs-server-production.up.railway.app"
+            });
+            let conns = [];
+            function submit(data) {
+                const block = submit_block_to_holder(holder, data);
+                displayBlock(JSON.parse(block));
+                console.log(conns.forEach(conn => conn.send(packageData("block", block))));
+            }
+            function verify() {
+                console.log(verify_chain_in_holder(holder));
+            }
+            function displayBlock(block) {
+                if (block) {
+                    document.querySelector("#stuff").append(document.createElement("br"))
+                    document.querySelector("#stuff").append(`${block.previous_hash} -> ${block.data}`);
+                }
+            }
+            function displayChain(chain) {
+                document.querySelector("#stuff").innerHTML = "";
+                JSON.parse(chain).chain.forEach(displayBlock);
+            }
+            function recv(data) {
+                console.log(data);
+                switch (data.kind) {
+                    case "block":
+                        add_block_to_holder(holder, data.data);
+                        displayBlock(JSON.parse(data.data));
+                        break;
+                    case "chain":
+                        add_chain_to_holder(holder, data.data);
+                        displayChain(get_chain_from_holder(holder));
+                        break;
+                }
+            }
+            // Kinds: block, chain
+            function packageData(kind, data) {
+                return {
+                    kind: kind,
+                    data: data,
+                    timestamp: new Date().getUTCMilliseconds()
+                };
+            }
+            function send_chain(conn) {
+                console.log(conn)
+                console.log(get_chain_from_holder(holder));
+                conn.send(packageData("chain", get_chain_from_holder(holder)));
+            }
+
+            peer.on('open', async (id) => {
+                // alert('My peer ID is: ' + id);
+                const peers = await getAllPeers();
+                peers.filter(p => p != id).map(p => peer.connect(p, { reliable: true })).map(c => conns.push(c));
+                conns.forEach(c => c.on('data', recv));
+                console.log(conns);
+            });
+            peer.on('connection', (conn) => {
+                conn.on('data', recv);
+                conn.on('open', () => send_chain(conn));
+                // send_chain(conn);
+                conns.push(conn);
+            });
+            document.getElementById('submit-block').addEventListener('click', () => submit(document.getElementById('block-content').value));
+            document.getElementById('verify-chain').addEventListener('click', verify);
+
+            async function getAllPeers() {
+                return await fetch('https://peerjs-server-production.up.railway.app/peerjs/peers')
+                    .then(res => res.json())
+            }
+            // requestAnimationFrame(submit);
+            // let previous_hash = "";
+            // while (true) {
+            //     previous_hash = add_block(previous_hash, "Hello");
+            //     // await new Promise(resolve => setTimeout(resolve, 100));
+            // }
+        })();
+
+    </script>
+    <script>
+
+    </script>
+    <title>Document</title>
+</head>
+
+<body>
+    <input type="text" id="block-content">
+    <button id="submit-block">Submit Block</button>
+    <button id="verify-chain">Verify Chain</button>
+    <div id="stuff"></div>
+</body>
+
+</html>

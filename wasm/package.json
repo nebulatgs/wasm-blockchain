@@ -1,0 +1,14 @@
+{
+	"name": "wasm-blockchain",
+	"version": "0.0.1",
+	"description": "Proof-Of-Concept WebAssembly Blockchain",
+	"scripts": {
+		"serve": "live-server static",
+		"build": "wasm-pack build --target web --out-name wasm --out-dir static/wasm"
+	},
+	"author": "Nebula <nebula@kora.gg>",
+	"license": "MIT/Apache-2.0",
+	"devDependencies": {
+		"live-server": "^1.2.1"
+	}
+}
