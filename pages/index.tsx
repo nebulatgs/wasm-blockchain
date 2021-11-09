@@ -1,5 +1,7 @@
 import type Peer from "peerjs";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import Avatar from "react-avatar";
+import { uniqueNamesGenerator, adjectives, colors, names } from 'unique-names-generator';
 import initWasm, {
 	add_block_to_holder,
 	add_chain_to_holder,
@@ -8,11 +10,20 @@ import initWasm, {
 	setup,
 	submit_block_to_holder,
 } from "wasm";
+import { RelativeTime } from '../components/relativeTime'
 interface Block {
 	previous_hash: string;
 	timestamp: number;
-	data: string;
+	msg: Message;
 	nonce: number;
+}
+
+interface Message {
+	sender: {
+		name: string;
+		public: unknown;
+	}
+	data: string;
 }
 interface Chain {
 	chain: Block[];
@@ -27,17 +38,21 @@ type SendableKey = keyof Sendable;
 interface Package<T extends Sendable[keyof Sendable]> {
 	kind: keyof Sendable;
 	data: T;
-	timestamp: number;
+	timestamp: string;
 }
 export default function Home() {
 	const [message, setMessage] = useState("");
 	const [blocks, setBlocks] = useState<Block[]>([]);
 	// const [holder, setHolder] = useState<Chainholder>();
 	let holder = useRef<Chainholder>();
-	let conns: Peer.DataConnection[] = [];
+	let conns = useRef<Peer.DataConnection[]>([]);
 	// let peer: Peer;
 	let peer = useRef<Peer>();
-
+	const AlwaysScrollToBottom = () => {
+		const elementRef = useRef<HTMLDivElement>(null);
+		useEffect(() => elementRef?.current?.scrollIntoView());
+		return <div ref={elementRef} />;
+	};
 	const withHolder = <T,>(
 		f: (holder: Chainholder, ...args: any[]) => T,
 		...args: any[]
@@ -52,7 +67,11 @@ export default function Home() {
 		(async () => {
 			const Peer = (await import("peerjs")).default;
 			await initWasm();
-			holder.current = setup();
+			holder.current = setup(uniqueNamesGenerator({
+				length: 2,
+				separator: '',
+				dictionaries: [adjectives, colors, names]
+			}));
 			peer.current = new Peer({
 				key: "peerjs",
 				host: "peerjs-server-production.up.railway.app",
@@ -63,25 +82,25 @@ export default function Home() {
 				peers
 					.filter((p) => p != id)
 					.map((p) => peer.current!.connect(p, { reliable: true }))
-					.map((c) => conns.push(c));
-				conns.forEach((c) => c.on("data", recv));
+					.map((c) => conns.current.push(c));
+				conns.current.forEach((c) => c.on("data", recv));
 				console.log(conns);
 			});
 			peer.current.on("connection", (conn) => {
 				conn.on("data", recv);
 				conn.on("open", () => send_chain(conn));
 				// send_chain(conn);
-				conns.push(conn);
+				conns.current.push(conn);
 			});
 		})();
 	}, []);
 
 	function submit(data: string) {
+		setMessage("");
 		const block = JSON.parse(withHolder(submit_block_to_holder, data)) as Block;
-		// displayBlock(block);
-		console.log(
-			conns.forEach((conn) => conn.send(packageData("block", block)))
-		);
+		console.log(conns);
+		conns.current.forEach((conn) => conn.send(packageData("block", block)))
+		setBlocks(getBlocks());
 	}
 	// function verify() {
 	// 	console.log(withHolder(verify_chain_in_holder));
@@ -102,13 +121,17 @@ export default function Home() {
 		switch (data.kind) {
 			case "block":
 				withHolder(add_block_to_holder, JSON.stringify(data.data));
+				setBlocks(getBlocks());
 				// displayBlock(data.data as Block);
 				break;
 			case "chain":
 				withHolder(add_chain_to_holder, JSON.stringify(data.data as Chain));
+				setBlocks(getBlocks());
 				break;
 		}
 	}
+	const getBlocks = () =>
+		(JSON.parse(withHolder(get_chain_from_holder)) as Chain).chain;
 	function packageData<T extends SendableKey>(
 		kind: T,
 		data: Sendable[T]
@@ -116,7 +139,7 @@ export default function Home() {
 		return {
 			kind: kind,
 			data: data,
-			timestamp: new Date().getUTCMilliseconds(),
+			timestamp: new Date().toISOString(),
 		};
 	}
 	function send_chain(conn: Peer.DataConnection) {
@@ -136,9 +159,39 @@ export default function Home() {
 	}
 
 	return (
-		<div>
-			<input type='text' onChange={(m) => setMessage(m.target.value)} />
-			<button onClick={() => submit(message)}>Submit Block</button>
+		<div className="bg-gray-700 h-screen w-full flex flex-col">
+			<div className="mt-auto overflow-auto scrollbar scrollbar-thumb-gray-400 scrollbar-track-gray-700 scrollbar-thumb-rounded-full">
+				{blocks.map(block => (
+					<div key={block.timestamp} className="m">
+						<div className="flex w-full p-3">
+							<Avatar round={true} size="3em" className="mr-3" name={block.msg.sender.name} />
+							<div className="flex flex-col font-sans">
+								<div className="flex">
+									<span className="mr-3 text-gray-200 font-bold text-lg inline">{block.msg.sender.name}</span>
+									<div className="text-gray-400 text-sm">
+										<RelativeTime date={new Date(block.timestamp)} />
+									</div>
+								</div>
+								<span className="text-gray-100 sm:max-w-lg md:max-w-2xl lg:max-w-4xl max-w-xs break-words">
+									{block.msg.data}
+								</span>
+							</div>
+						</div>
+					</div>
+				))}
+				<AlwaysScrollToBottom />
+			</div>
+			<div className="flex w-full">
+				<input
+					type='text'
+					className="w-full h-10 p-5 m-3 rounded-full focus:outline-none bg-gray-600 text-gray-100"
+					placeholder="Submit a message to the blockchain"
+					onChange={(m) => setMessage(m.target.value)}
+					value={message}
+					onKeyPress={(k) => { k.key === 'Enter' ? submit(message) : null }}
+				/>
+				{/* <button onClick={() => submit(message)}>Submit Block</button> */}
+			</div>
 		</div>
 	);
 }

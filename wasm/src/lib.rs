@@ -1,17 +1,19 @@
 // sample code below was taken from https://github.com/rustwasm/wasm-bindgen
 
 extern crate blake3;
+extern crate js_sys;
+extern crate rand;
+extern crate schnorrkel;
 extern crate serde;
 extern crate serde_json;
 extern crate wasm_bindgen;
+extern crate web_sys;
 
+use js_sys::Date;
+use rand::rngs::OsRng;
+use schnorrkel::{signing_context, Keypair, PublicKey, SecretKey, Signature};
 use serde::{Deserialize, Serialize};
-use serde_json::Result;
-
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-};
+use web_sys::{window, Storage};
 
 use wasm_bindgen::prelude::*;
 // JS Bindings
@@ -19,27 +21,44 @@ use wasm_bindgen::prelude::*;
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
-    #[wasm_bindgen(js_namespace = Date)]
-    fn now() -> u32;
 }
 
 //Structs
-#[derive(Serialize, Deserialize, Hash, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PrivateIdentity {
+    pub name: String,
+    pub keypair: Keypair,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PublicIdentity {
+    pub name: String,
+    pub public: PublicKey,
+}
+impl Into<PublicIdentity> for PrivateIdentity {
+    fn into(self) -> PublicIdentity {
+        PublicIdentity {
+            public: self.keypair.public,
+            name: self.name,
+        }
+    }
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
     // pub hash: String,
     pub previous_hash: String,
-    pub timestamp: u32,
-    pub data: String,
+    pub timestamp: f64,
+    pub msg: Message,
     pub nonce: u64,
 }
 
 impl Block {
-    pub fn new(data: String, previous_hash: String) -> Block {
+    pub fn new(msg: Message, previous_hash: String) -> Block {
         let mut block = Block {
             // hash: String::new(),
             previous_hash,
-            timestamp: now(),
-            data,
+            timestamp: Date::now(),
+            msg,
             nonce: 0,
         };
         block.mine();
@@ -59,7 +78,7 @@ impl Block {
 
     pub fn calculate_hash(&self) -> String {
         let mut s = blake3::Hasher::new();
-        s.update_rayon(serde_json::to_string(self).unwrap().as_bytes());
+        s.update(serde_json::to_string(self).unwrap().as_bytes());
         s.finalize().to_hex().to_string()
     }
 }
@@ -76,15 +95,15 @@ impl Blockchain {
     pub fn add_block(&mut self, block: Block) {
         self.chain.push(block);
     }
-    pub fn create_block(&mut self, data: String) -> &Block {
+    pub fn create_block(&mut self, msg: Message) -> &Block {
         let last = self.chain.last();
         if last.is_none() {
-            let block = Block::new(data, String::new());
+            let block = Block::new(msg, String::new());
             self.chain.push(block);
             self.chain.last().unwrap()
         } else {
             let previous_hash = last.unwrap().calculate_hash();
-            let block = Block::new(data, previous_hash);
+            let block = Block::new(msg, previous_hash);
             self.chain.push(block);
             self.chain.last().unwrap()
         }
@@ -100,6 +119,9 @@ impl Blockchain {
         let mut previous_hash = String::new();
         for block in self.chain.iter() {
             let hash = block.calculate_hash();
+            if !block.msg.verify_signature() {
+                return false;
+            }
             if !hash.starts_with("0000") {
                 return false;
             }
@@ -117,13 +139,36 @@ impl Blockchain {
 pub struct Chainholder {
     chains: Vec<Blockchain>,
     active_chain: usize,
+    id: PrivateIdentity,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Message {
+    data: String,
+    sender: PublicIdentity,
+    signature: Signature,
+}
+
+impl Message {
+    pub fn verify_signature(&self) -> bool {
+        let context = signing_context(b"Verify message identity");
+        match self
+            .sender
+            .public
+            .verify(context.bytes(self.data.as_bytes()), &self.signature)
+        {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
 }
 
 impl Chainholder {
-    pub fn new(chains: Vec<Blockchain>) -> Chainholder {
+    pub fn new(chains: Vec<Blockchain>, id: PrivateIdentity) -> Chainholder {
         let mut holder = Chainholder {
             chains,
             active_chain: 0,
+            id,
         };
         holder.calculate_active_chain();
         holder
@@ -155,14 +200,69 @@ impl Chainholder {
         self.active_chain = i;
         self.get_active()
     }
+    pub fn sign_message(&self, data: String) -> Message {
+        let context = signing_context(b"Verify message identity");
+        let signature = self.id.keypair.sign(context.bytes(data.as_bytes()));
+        Message {
+            data,
+            sender: self.id.clone().into(),
+            signature,
+        }
+    }
 }
 
 // Export a `greet` function from Rust to JavaScript, that alerts a
 // hello message.
 
+fn generate_identity(name: &str) -> PrivateIdentity {
+    // Setup pair of keys, message, and signing context
+    let keypair = Keypair::generate_with(OsRng);
+    let message = String::from("Hello, world!");
+    let context = signing_context(b"Verify message identity");
+
+    // Signature generation
+    let signature = keypair.sign(context.bytes(message.as_bytes()));
+
+    // // Signature verification
+    // let public_key = keypair.public;
+    // public_key
+    //     .verify(context.bytes(message.as_bytes()), &signature)
+    //     .expect("This program crashed due to signature mismatch");
+
+    // // Console success output
+    // println!("Signature verified");
+    PrivateIdentity {
+        name: name.to_string(),
+        keypair,
+    }
+}
+
 #[wasm_bindgen]
-pub fn setup() -> Chainholder {
-    Chainholder::new(vec![Blockchain::new()])
+pub fn setup(name: &str) -> Chainholder {
+    let storage = window()
+        .expect("should have a window")
+        .local_storage()
+        .expect("should have local storage")
+        .unwrap();
+    let id = match storage
+        .get_item("identity")
+        .expect("error retrieving identity")
+    {
+        Some(id_str) => serde_json::from_str::<PrivateIdentity>(&id_str).unwrap(),
+        None => {
+            let identity = generate_identity(name);
+            storage
+                .set_item(
+                    "identity",
+                    serde_json::to_string(&identity)
+                        .expect("unable to set identity")
+                        .as_str(),
+                )
+                .unwrap();
+            identity
+        }
+    };
+    Chainholder::new(vec![Blockchain::new()], id)
 }
 
 #[wasm_bindgen]
@@ -221,13 +321,14 @@ pub fn add_chain_to_holder(holder: &mut Chainholder, data: &str) {
 
 #[wasm_bindgen]
 pub fn submit_block_to_holder(holder: &mut Chainholder, data: &str) -> String {
+    let msg = holder.sign_message(data.to_string());
     let chain = holder.get_active();
-    let then = now();
-    let block = chain.create_block(data.to_string());
+    let then = Date::now();
+    let block = chain.create_block(msg);
     log(&format!(
         "Added block {}\n mined in {} ms",
         serde_json::to_string(block).unwrap(),
-        now() - then
+        Date::now() - then
     ));
     serde_json::to_string(block).unwrap()
 }

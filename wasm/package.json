@@ -1,6 +1,6 @@
 {
 	"name": "wasm-blockchain",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "Proof-Of-Concept WebAssembly Blockchain",
 	"scripts": {
 		"serve": "live-server static",
@@ -10,5 +10,6 @@
 	"license": "MIT/Apache-2.0",
 	"devDependencies": {
 		"live-server": "^1.2.1"
-	}
+	},
+	"dependencies": {}
 }
