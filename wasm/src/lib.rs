@@ -1,20 +1,20 @@
-// sample code below was taken from https://github.com/rustwasm/wasm-bindgen
-
 extern crate blake3;
 extern crate js_sys;
 extern crate rand;
 extern crate schnorrkel;
 extern crate serde;
 extern crate serde_json;
+extern crate vulkan;
 extern crate wasm_bindgen;
 extern crate web_sys;
+extern crate wgpu;
 
 use js_sys::Date;
 use rand::rngs::OsRng;
-use schnorrkel::{signing_context, Keypair, PublicKey, SecretKey, Signature};
+use schnorrkel::{signing_context, Keypair, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
-use web_sys::{window, Storage};
-
+use web_sys::window;
+use vulkan::runner::ParamsBuilder;
 use wasm_bindgen::prelude::*;
 // JS Bindings
 #[wasm_bindgen]
@@ -43,17 +43,18 @@ impl Into<PublicIdentity> for PrivateIdentity {
         }
     }
 }
+#[wasm_bindgen]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
     // pub hash: String,
-    pub previous_hash: String,
-    pub timestamp: f64,
-    pub msg: Message,
-    pub nonce: u64,
+    previous_hash: String,
+    timestamp: f64,
+    msg: Message,
+    nonce: u64,
 }
 
 impl Block {
-    pub fn new(msg: Message, previous_hash: String) -> Block {
+    pub async fn new(msg: Message, previous_hash: String) -> Block {
         let mut block = Block {
             // hash: String::new(),
             previous_hash,
@@ -61,11 +62,11 @@ impl Block {
             msg,
             nonce: 0,
         };
-        block.mine();
+        block.mine_gpu().await;
         block
     }
 
-    pub fn mine(&mut self) {
+    pub fn mine_cpu(&mut self) {
         loop {
             let hash = self.calculate_hash();
             // log(&hash);
@@ -73,6 +74,74 @@ impl Block {
                 break;
             }
             self.nonce += 1;
+        }
+    }
+
+    async fn hash_vec(possiblities: Vec<String>) -> Option<usize> {
+        let count= possiblities.len();
+        let (texts, sizes): (Vec<Vec<u32>>, Vec<u32>) =
+            possiblities.into_iter().map(|x| vulkan::runner::prepare_for_gpu(x)).unzip();
+
+        let texts: Vec<u32> = texts.into_iter().flatten().collect();
+
+        let hash = vec![0u32; count * 8];
+        // assert_eq!(hash.len() * core::mem::size_of::<u32>() * 8, 8 * 32 * count);
+
+        let mut device = vulkan::runner::Device::new(0).await;
+        let text_gpu = device.to_device(texts.as_slice());
+        let hash_gpu = device.to_device(hash.as_slice());
+        let size_gpu = device.to_device(sizes.as_slice());
+
+        // let shader = wgpu::include_spirv!("/home/coder/wasm-blockchain/wasm/vulkan/target/wasm32-unknown-unknown/spirv-builder/spirv-unknown-unknown/release/kernel.spv");
+        let shader = wgpu::include_spirv!("/home/coder/wasm-blockchain/wasm/vulkan/target/spirv-builder/spirv-unknown-unknown/release/kernel.spv");
+
+        let args = ParamsBuilder::new()
+            .param(Some(&text_gpu))
+            .param(Some(&hash_gpu))
+            .param(Some(&size_gpu))
+            .build(Some(0));
+
+        let compute = device.compile("main_cs", &shader, &args.0).unwrap();
+
+        device.call(compute, (count as u32, 1, 1), &args.1);
+
+        let hash_res = device.get(&hash_gpu).await.unwrap();
+        let hash_res = &hash_res[0..hash.len()];
+
+        let result: String = hash_res.into_iter().map(|x| format!("{:08x}", x)).collect();
+        let chunks = result
+            .as_bytes()
+            .chunks(64)
+            .map(std::str::from_utf8)
+            .collect::<Result<Vec<&str>, _>>()
+            .unwrap();
+        for (i, chunk) in chunks.iter().enumerate() {
+            if chunk.starts_with("0000") {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    pub async fn mine_gpu(&mut self) {
+        let mut clone = self.clone();
+        let mut outer_i = 0;
+        loop {
+            let mut possiblities: Vec<String> = Vec::<String>::new();
+            for _ in 0..8192 {
+                possiblities.push(serde_json::to_string(&clone).unwrap());
+                clone.nonce += 1;
+            }
+            match Block::hash_vec(possiblities).await {
+                Some(i) => {
+                    self.nonce = (outer_i + i) as u64;
+                    return;
+                }
+                None => {
+                    log(clone.nonce.to_string().as_str());
+                }
+            }
+            outer_i = outer_i + 1;
         }
     }
 
@@ -95,17 +164,13 @@ impl Blockchain {
     pub fn add_block(&mut self, block: Block) {
         self.chain.push(block);
     }
-    pub fn create_block(&mut self, msg: Message) -> &Block {
-        let last = self.chain.last();
+    pub async fn create_block(this: Self, msg: Message) -> Block {
+        let last = this.chain.last();
         if last.is_none() {
-            let block = Block::new(msg, String::new());
-            self.chain.push(block);
-            self.chain.last().unwrap()
+            Block::new(msg, String::new()).await
         } else {
             let previous_hash = last.unwrap().calculate_hash();
-            let block = Block::new(msg, previous_hash);
-            self.chain.push(block);
-            self.chain.last().unwrap()
+            Block::new(msg, previous_hash).await
         }
     }
     pub fn get_latest_block(&self) -> &Block {
@@ -217,11 +282,11 @@ impl Chainholder {
 fn generate_identity(name: &str) -> PrivateIdentity {
     // Setup pair of keys, message, and signing context
     let keypair = Keypair::generate_with(OsRng);
-    let message = String::from("Hello, world!");
-    let context = signing_context(b"Verify message identity");
+    // let message = String::from("Hello, world!");
+    // let context = signing_context(b"Verify message identity");
 
     // Signature generation
-    let signature = keypair.sign(context.bytes(message.as_bytes()));
+    // let signature = keypair.sign(context.bytes(message.as_bytes()));
 
     // // Signature verification
     // let public_key = keypair.public;
@@ -262,6 +327,7 @@ pub fn setup(name: &str) -> Chainholder {
             identity
         }
     };
+
     Chainholder::new(vec![Blockchain::new()], id)
 }
 
@@ -320,15 +386,23 @@ pub fn add_chain_to_holder(holder: &mut Chainholder, data: &str) {
 }
 
 #[wasm_bindgen]
-pub fn submit_block_to_holder(holder: &mut Chainholder, data: &str) -> String {
+pub async fn mine_block(mut holder: Chainholder, data: String) -> Block {
     let msg = holder.sign_message(data.to_string());
     let chain = holder.get_active();
     let then = Date::now();
-    let block = chain.create_block(msg);
+    let block = Blockchain::create_block(chain.clone(), msg).await;
+    let stringified_block = serde_json::to_string(&block).unwrap();
     log(&format!(
-        "Added block {}\n mined in {} ms",
-        serde_json::to_string(block).unwrap(),
+        "Mined block {}\nin {} ms",
+        stringified_block,
         Date::now() - then
     ));
-    serde_json::to_string(block).unwrap()
+    block
+}
+
+#[wasm_bindgen]
+pub fn submit_block_to_holder(holder: &mut Chainholder, block: &Block) -> String{
+    let chain = holder.get_active();
+    chain.add_block(block.clone());
+    serde_json::to_string(&block).unwrap()
 }

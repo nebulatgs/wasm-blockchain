@@ -9,6 +9,7 @@ import initWasm, {
 	get_chain_from_holder,
 	setup,
 	submit_block_to_holder,
+	mine_block
 } from "wasm";
 import { RelativeTime } from '../components/relativeTime'
 interface Block {
@@ -95,9 +96,10 @@ export default function Home() {
 		})();
 	}, []);
 
-	function submit(data: string) {
+	async function submit(data: string) {
 		setMessage("");
-		const block = JSON.parse(withHolder(submit_block_to_holder, data)) as Block;
+		const wasm_block = await withHolder(mine_block, data);
+		const block = JSON.parse(withHolder(submit_block_to_holder, wasm_block)) as Block;
 		console.log(conns);
 		conns.current.forEach((conn) => conn.send(packageData("block", block)))
 		setBlocks(getBlocks());

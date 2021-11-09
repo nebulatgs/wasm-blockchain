@@ -5,6 +5,7 @@ authors = ["Nebula <nebula@kora.gg>"]
 description = "Proof-Of-Concept WebAssembly Blockchain"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/nebulatgs/wasm-blockchain"
+edition="2021"
 
 [lib]
 crate-type = ["cdylib"]
@@ -18,7 +19,12 @@ js-sys = "0.3.55"
 rand =  "0.8.3"
 getrandom = { version = "0.2.3", features = ["js"] }
 schnorrkel = {version= "0.10.1", features = ["serde"]}
+wgpu = {version = "0.11.0", features=["spirv", "spirv-web"]}
+wasm-bindgen-futures = "*"
+
+[dependencies.vulkan]
+path = "./vulkan"
 
 [dependencies.web-sys]
-version = "0.3.55"
+version = "0.3.50"
 features = ['Document', 'Element', 'HtmlElement', 'Node', 'Window', "Storage"]
