@@ -23,8 +23,14 @@ interface Message {
 		name: string;
 		public: unknown;
 	}
+	data: MessageContent;
+}
+
+interface MessageContent {
+	kind: "image" | "text";
 	data: string;
 }
+
 interface Chain {
 	chain: Block[];
 }
@@ -95,9 +101,9 @@ export default function Home() {
 		})();
 	}, []);
 
-	function submit(data: string) {
+	function submit(data: MessageContent) {
 		setMessage("");
-		const block = JSON.parse(withHolder(submit_block_to_holder, data)) as Block;
+		const block = JSON.parse(withHolder(submit_block_to_holder, JSON.stringify(data))) as Block;
 		console.log(conns);
 		conns.current.forEach((conn) => conn.send(packageData("block", block)))
 		setBlocks(getBlocks());
@@ -157,7 +163,13 @@ export default function Home() {
 			"https://peerjs-server-production.up.railway.app/peerjs/peers"
 		).then((res) => res.json())) as string[];
 	}
-
+	function blobToBase64(blob: Blob) {
+		return new Promise<string | null>((resolve, _) => {
+			const reader = new FileReader();
+			reader.onloadend = () => resolve(reader.result as string | null);
+			reader.readAsDataURL(blob);
+		});
+	}
 	return (
 		<div className="bg-gray-700 h-screen w-full flex flex-col">
 			<div className="mt-auto overflow-auto scrollbar scrollbar-thumb-gray-400 scrollbar-track-gray-700 scrollbar-thumb-rounded-full">
@@ -173,7 +185,7 @@ export default function Home() {
 									</div>
 								</div>
 								<span className="text-gray-100 sm:max-w-lg md:max-w-2xl lg:max-w-4xl max-w-xs break-words">
-									{block.msg.data}
+									{block.msg.data.kind === "text" ? block.msg.data.data : (<img src={block.msg.data.data} />)}
 								</span>
 							</div>
 						</div>
@@ -182,13 +194,24 @@ export default function Home() {
 				<AlwaysScrollToBottom />
 			</div>
 			<div className="flex w-full">
+				<label className="h-10 p-5 m-3 mr-0 rounded-full focus:outline-none bg-gray-600 text-gray-100 cursor-pointer">
+					<input type="file" className="hidden" accept="image/*" onChange={async (e) => {
+						if (e.target.files?.item(0)) {
+							const b64 = await blobToBase64(e.target.files.item(0)!);
+							if (b64) {
+								submit({kind: "image", data: b64});
+							}
+						}
+						e.target.value = "";
+					}} />
+				</label>
 				<input
 					type='text'
 					className="w-full h-10 p-5 m-3 rounded-full focus:outline-none bg-gray-600 text-gray-100"
 					placeholder="Submit a message to the blockchain"
 					onChange={(m) => setMessage(m.target.value)}
 					value={message}
-					onKeyPress={(k) => { k.key === 'Enter' ? submit(message) : null }}
+					onKeyPress={(k) => { k.key === 'Enter' && message && submit({kind: "text", data: message}) }}
 				/>
 				{/* <button onClick={() => submit(message)}>Submit Block</button> */}
 			</div>
