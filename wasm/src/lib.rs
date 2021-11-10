@@ -210,9 +210,15 @@ pub struct Chainholder {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
-    data: String,
+    data: MessageContent,
     sender: PublicIdentity,
     signature: Signature,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MessageContent {
+	kind: String,
+	data: String,
 }
 
 impl Message {
@@ -221,7 +227,7 @@ impl Message {
         match self
             .sender
             .public
-            .verify(context.bytes(self.data.as_bytes()), &self.signature)
+            .verify(context.bytes(serde_json::to_string(&self.data).unwrap().as_bytes()), &self.signature)
         {
             Ok(_) => true,
             Err(_) => false,
@@ -266,9 +272,9 @@ impl Chainholder {
         self.active_chain = i;
         self.get_active()
     }
-    pub fn sign_message(&self, data: String) -> Message {
+    pub fn sign_message(&self, data: MessageContent) -> Message {
         let context = signing_context(b"Verify message identity");
-        let signature = self.id.keypair.sign(context.bytes(data.as_bytes()));
+        let signature = self.id.keypair.sign(context.bytes(serde_json::to_string(&data).unwrap().as_bytes()));
         Message {
             data,
             sender: self.id.clone().into(),
@@ -388,7 +394,7 @@ pub fn add_chain_to_holder(holder: &mut Chainholder, data: &str) {
 
 #[wasm_bindgen]
 pub async fn mine_block(mut holder: Chainholder, data: String) -> Block {
-    let msg = holder.sign_message(data.to_string());
+    let msg = holder.sign_message(serde_json::from_str::<MessageContent>(data.as_str()).unwrap());
     let chain = holder.get_active();
     let then = Date::now();
     let block = Blockchain::create_block(chain.clone(), msg).await;
