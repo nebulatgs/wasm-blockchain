@@ -10,7 +10,7 @@ import initWasm, {
 	setup,
 	submit_block_to_holder,
 	mine_block
-} from "wasm";
+} from "../wasm/static/wasm";
 import { RelativeTime } from '../components/relativeTime'
 interface Block {
 	previous_hash: string;

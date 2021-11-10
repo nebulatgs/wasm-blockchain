@@ -93,7 +93,7 @@ impl Block {
         let size_gpu = device.to_device(sizes.as_slice());
 
         // let shader = wgpu::include_spirv!("/home/coder/wasm-blockchain/wasm/vulkan/target/wasm32-unknown-unknown/spirv-builder/spirv-unknown-unknown/release/kernel.spv");
-        let shader = wgpu::include_spirv!("/home/coder/hash-shader/vulkan/target/spirv-builder/spirv-unknown-unknown/release/kernel.spv");
+        let shader = wgpu::include_wgsl!("/home/coder/wasm-blockchain/wasm/vulkan/kernel/src/sha.wgsl");
 
         let args = ParamsBuilder::new()
             .param(Some(&text_gpu))
@@ -117,6 +117,7 @@ impl Block {
             .unwrap();
         for (i, chunk) in chunks.iter().enumerate() {
             if chunk.starts_with("0000") {
+                log(chunk);
                 return Some(i);
             }
         }

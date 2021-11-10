@@ -15,6 +15,7 @@ pub struct Device {
 pub struct GPUData<T: ?Sized> {
     pub staging_buffer: wgpu::Buffer,
     pub storage_buffer: wgpu::Buffer,
+    pub result_buffer: wgpu::Buffer,
     pub size: u64,
     pub phantom: PhantomData<T>,
 }
@@ -23,19 +24,22 @@ impl Device {
     pub async fn new(device_index: usize) -> Self {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
         // let mut adapter = instance.enumerate_adapters(wgpu::BackendBit::PRIMARY);
-        let adapter =
-            instance.request_adapter(&wgpu::RequestAdapterOptions::default()).await.unwrap();
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .await
+            .unwrap();
         // let adapter = adapter.nth(device_index).unwrap();
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
-                limits: wgpu::Limits::default(),
-                label: None,
-            },
-            None,
-        )
-        .await
-        .unwrap();
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    features: wgpu::Features::default(),
+                    limits: wgpu::Limits::default(),
+                    label: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
         let info = adapter.get_info().clone();
         let info = DeviceInfo { info };
 
@@ -54,10 +58,17 @@ impl Device {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Staging Buffer"),
                 contents: &bytes,
-                usage: wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::COPY_SRC,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             });
-
+        
+        let result_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Result Buffer"),
+                contents: &bytes,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            });
+        
         let storage_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: bytes.len() as u64,
@@ -77,6 +88,7 @@ impl Device {
         GPUData {
             staging_buffer,
             storage_buffer,
+            result_buffer,
             size: bytes.len() as u64,
             phantom: PhantomData,
         }
@@ -89,10 +101,10 @@ impl Device {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        encoder.copy_buffer_to_buffer(&gpu.storage_buffer, 0, &gpu.staging_buffer, 0, gpu.size);
+        encoder.copy_buffer_to_buffer(&gpu.storage_buffer, 0, &gpu.result_buffer, 0, gpu.size);
         self.queue.submit(Some(encoder.finish()));
 
-        let buffer_slice = gpu.staging_buffer.slice(0..);
+        let buffer_slice = gpu.result_buffer.slice(0..);
         let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
 
         self.device.poll(wgpu::Maintain::Wait);
@@ -105,7 +117,7 @@ impl Device {
                 .map(|b| bytemuck::from_bytes::<T>(b).clone())
                 .collect();
             drop(data);
-            gpu.staging_buffer.unmap();
+            gpu.result_buffer.unmap();
             return Some(result);
         }
         None

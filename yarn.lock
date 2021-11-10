@@ -3495,7 +3495,7 @@ vm-browserify@1.1.2:
   integrity sha512-2ham8XPWTONajOR0ohOKOHXkm3+gaBmGut3SRuu75xLd/RRaY6vqgh8NBYYk7+RW3u5AtzPQZG8F10LHkl0lAQ==
 
 "wasm@file:./wasm/static/wasm":
-  version "0.0.19"
+  version "0.0.23"
 
 watchpack@2.1.1:
   version "2.1.1"
