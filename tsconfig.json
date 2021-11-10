@@ -19,6 +19,6 @@
 		"allowUnreachableCode": false,
 		"allowUnusedLabels": false
 	},
-	"include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+	"include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "components/relativeTime.jsx"],
 	"exclude": ["node_modules"]
 }

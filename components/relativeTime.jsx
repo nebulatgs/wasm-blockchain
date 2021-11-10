@@ -144,7 +144,7 @@ i.date = function(e, t) {
         };
     return e.replace(r, s)
 };
-i.relativeTime = function(e: number) {
+i.relativeTime = function(e) {
     e = void 0 === e ? i.time() : e;
     var t = i.time(),
         n = t - e;
@@ -168,7 +168,7 @@ i.relativeTime = function(e: number) {
     return c < 2 && c > -2 ? c >= 0 ? "a year ago" : "in a year" : c >= 0 ? c + " years ago" : "in " + -c + " years"
 };
 
-export function RelativeTime({ date }: { date: Date }) {
+export function RelativeTime({ date }) {
     const dateTime = DateTime.fromJSDate(date);
     return (
         <>
