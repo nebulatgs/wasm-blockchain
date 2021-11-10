@@ -93,7 +93,7 @@ impl Block {
         let size_gpu = device.to_device(sizes.as_slice());
 
         // let shader = wgpu::include_spirv!("/home/coder/wasm-blockchain/wasm/vulkan/target/wasm32-unknown-unknown/spirv-builder/spirv-unknown-unknown/release/kernel.spv");
-        let shader = wgpu::include_spirv!("/home/coder/wasm-blockchain/wasm/vulkan/target/spirv-builder/spirv-unknown-unknown/release/kernel.spv");
+        let shader = wgpu::include_spirv!("/home/coder/hash-shader/vulkan/target/spirv-builder/spirv-unknown-unknown/release/kernel.spv");
 
         let args = ParamsBuilder::new()
             .param(Some(&text_gpu))
