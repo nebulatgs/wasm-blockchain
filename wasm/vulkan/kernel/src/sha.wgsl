@@ -1,5 +1,5 @@
 [[block]] struct IntArr {
-    arr: [[stride(4)]] array<u32>;
+    arr: array<u32>;
 };
 
 [[group(0), binding(0)]]
@@ -213,7 +213,7 @@ var t2: u32;
 //     );
 // }
 
-[[stage(compute), workgroup_size(64)]]
+[[stage(compute), workgroup_size(1)]]
 fn main_cs(
     [[builtin(global_invocation_id)]] gid: vec3<u32>,
 ) {

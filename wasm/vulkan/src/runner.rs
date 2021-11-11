@@ -15,7 +15,6 @@ pub struct Device {
 pub struct GPUData<T: ?Sized> {
     pub staging_buffer: wgpu::Buffer,
     pub storage_buffer: wgpu::Buffer,
-    pub result_buffer: wgpu::Buffer,
     pub size: u64,
     pub phantom: PhantomData<T>,
 }
@@ -50,7 +49,7 @@ impl Device {
         }
     }
 
-    pub fn to_device<T: bytemuck::Pod>(&mut self, data: &[T]) -> GPUData<[T]> {
+    pub fn initialize_buffers<T: bytemuck::Pod>(&mut self, data: &[T]) -> GPUData<[T]> {
         let bytes = bytemuck::cast_slice(data);
 
         let staging_buffer = self
@@ -60,15 +59,7 @@ impl Device {
                 contents: &bytes,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             });
-        
-        let result_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Result Buffer"),
-                contents: &bytes,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            });
-        
+
         let storage_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: bytes.len() as u64,
@@ -88,7 +79,6 @@ impl Device {
         GPUData {
             staging_buffer,
             storage_buffer,
-            result_buffer,
             size: bytes.len() as u64,
             phantom: PhantomData,
         }
@@ -98,13 +88,22 @@ impl Device {
     where
         T: bytemuck::Pod,
     {
+               
+        let result_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: gpu.size,
+            usage: wgpu::BufferUsages::MAP_READ
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        encoder.copy_buffer_to_buffer(&gpu.storage_buffer, 0, &gpu.result_buffer, 0, gpu.size);
+        encoder.copy_buffer_to_buffer(&gpu.storage_buffer, 0, &result_buffer, 0, gpu.size);
         self.queue.submit(Some(encoder.finish()));
 
-        let buffer_slice = gpu.result_buffer.slice(0..);
+        let buffer_slice = result_buffer.slice(0..);
         let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
 
         self.device.poll(wgpu::Maintain::Wait);
@@ -117,7 +116,7 @@ impl Device {
                 .map(|b| bytemuck::from_bytes::<T>(b).clone())
                 .collect();
             drop(data);
-            gpu.result_buffer.unmap();
+            drop(result_buffer);
             return Some(result);
         }
         None

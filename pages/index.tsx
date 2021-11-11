@@ -104,7 +104,7 @@ export default function Home() {
 
 	async function submit(data: MessageContent) {
 		setMessage("");
-		const wasm_block = await withHolder(mine_block, JSON.stringify(data));
+		const wasm_block = await withHolder(mine_block, JSON.stringify(data), 4096);
 		const block = JSON.parse(withHolder(submit_block_to_holder, wasm_block)) as Block;
 		console.log(conns);
 		conns.current.forEach((conn) => conn.send(packageData("block", block)))
